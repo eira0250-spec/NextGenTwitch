@@ -3,25 +3,23 @@ name: Build AE Plugin
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # 手動でボタンを押して実行できるようにする魔法の呪文
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest # Windowsのサーバーを借ります
+    runs-on: windows-latest
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    # 本来はここにC++のコンパイル(CMakeやMSBuild)の指示を書きますが、
-    # 今回はテストとして「ダミーの.aexファイル」を生成してダウンロードできるか確認します！
     - name: Create Dummy AEX for Pipeline Test
       run: |
         mkdir build
         echo "This is a dummy plugin. Next step is injecting real C++!" > build/NextGenTwitch.aex
 
-    - name: Upload Artifact (完成品のアップロード)
-      uses: actions/upload-artifact@v3
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
       with:
         name: NextGenTwitch_Plugin
         path: build/NextGenTwitch.aex
