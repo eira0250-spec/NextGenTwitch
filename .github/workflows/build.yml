@@ -11,35 +11,36 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # Microsoftのコンパイルツール（MSBuild）をセットアップ
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
-    # アップロードされたSDK(ZIP)を見つけて自動で解凍する
-    - name: Extract SDK
+    # パワーアップ！ 7-Zipを使って確実に解凍する
+    - name: Extract SDK with 7zip
       run: |
         $zipFile = Get-ChildItem -Filter *.zip | Select-Object -First 1
         if ($zipFile) {
-            Write-Host "Extracting $($zipFile.Name)... this might take a minute."
-            Expand-Archive -Path $zipFile.FullName -DestinationPath "AESDK" -Force
+            Write-Host "Extracting $($zipFile.Name) using 7-Zip... (Super fast!)"
+            7z x $zipFile.FullName -oAESDK -y
         } else {
             Write-Error "SDK.zip not found!"
             exit 1
         }
 
-    # SDKの中から「Skeleton」を見つけてC++をコンパイルする！
-    - name: Build Skeleton Project
+    # 執念の探索！「keleton」という文字が含まれるプロジェクトを絶対に見つける
+    - name: Find and Build Skeleton
       run: |
-        $projectFile = Get-ChildItem -Path AESDK -Filter Skeleton.vcxproj -Recurse | Select-Object -First 1
+        $projectFile = Get-ChildItem -Path AESDK -Filter *keleton*.vcxproj -Recurse | Select-Object -First 1
+        
         if ($projectFile) {
-            Write-Host "Building $($projectFile.FullName)..."
+            Write-Host "Found it! Building $($projectFile.FullName)..."
             msbuild $projectFile.FullName /p:Configuration=Release /p:Platform=x64
         } else {
-            Write-Error "Skeleton.vcxproj not found."
+            Write-Host "================ DEBUG INFO ================"
+            Write-Host "Skeleton project STILL not found. Let's see what vcxproj files actually exist:"
+            Get-ChildItem -Path AESDK -Filter *.vcxproj -Recurse | Select-Object FullName
             exit 1
         }
 
-    # 完成した本物の .aex ファイルをダウンロードできるようにする
     - name: Upload Real AEX
       uses: actions/upload-artifact@v4
       with:
