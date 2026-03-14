@@ -1,48 +1,29 @@
-name: Build Real AE Plugin
+name: Debug SDK Content
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  debug:
     runs-on: windows-latest
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
-
-    # パワーアップ！ 7-Zipを使って確実に解凍する
-    - name: Extract SDK with 7zip
+    - name: Inspect ZIP and Extract
       run: |
         $zipFile = Get-ChildItem -Filter *.zip | Select-Object -First 1
         if ($zipFile) {
-            Write-Host "Extracting $($zipFile.Name) using 7-Zip... (Super fast!)"
-            7z x $zipFile.FullName -oAESDK -y
+            Write-Host "【発見！】アップロードされたZIP: $($zipFile.Name)"
+            Write-Host "【サイズ】: $($zipFile.Length) バイト"
+            
+            Write-Host "解凍して中身を調べます..."
+            7z x $zipFile.FullName -oAESDK -y > $null
+            
+            Write-Host "================ ZIPの中身（最初の30個） ================"
+            Get-ChildItem -Path AESDK -Recurse | Select-Object FullName | Select-Object -First 30
         } else {
-            Write-Error "SDK.zip not found!"
+            Write-Error "ZIPファイル自体が見つかりません！アップロードできていないかも？"
             exit 1
         }
-
-    # 執念の探索！「keleton」という文字が含まれるプロジェクトを絶対に見つける
-    - name: Find and Build Skeleton
-      run: |
-        $projectFile = Get-ChildItem -Path AESDK -Filter *keleton*.vcxproj -Recurse | Select-Object -First 1
-        
-        if ($projectFile) {
-            Write-Host "Found it! Building $($projectFile.FullName)..."
-            msbuild $projectFile.FullName /p:Configuration=Release /p:Platform=x64
-        } else {
-            Write-Host "================ DEBUG INFO ================"
-            Write-Host "Skeleton project STILL not found. Let's see what vcxproj files actually exist:"
-            Get-ChildItem -Path AESDK -Filter *.vcxproj -Recurse | Select-Object FullName
-            exit 1
-        }
-
-    - name: Upload Real AEX
-      uses: actions/upload-artifact@v4
-      with:
-        name: Real_Plugin_Test
-        path: AESDK/**/*.aex
