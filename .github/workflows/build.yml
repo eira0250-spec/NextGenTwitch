@@ -1,8 +1,6 @@
-name: Build AE Plugin
+name: Build Real AE Plugin
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -13,13 +11,37 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Create Dummy AEX for Pipeline Test
-      run: |
-        mkdir build
-        echo "This is a dummy plugin. Next step is injecting real C++!" > build/NextGenTwitch.aex
+    # Microsoftのコンパイルツール（MSBuild）をセットアップ
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
 
-    - name: Upload Artifact
+    # アップロードされたSDK(ZIP)を見つけて自動で解凍する
+    - name: Extract SDK
+      run: |
+        $zipFile = Get-ChildItem -Filter *.zip | Select-Object -First 1
+        if ($zipFile) {
+            Write-Host "Extracting $($zipFile.Name)... this might take a minute."
+            Expand-Archive -Path $zipFile.FullName -DestinationPath "AESDK" -Force
+        } else {
+            Write-Error "SDK.zip not found!"
+            exit 1
+        }
+
+    # SDKの中から「Skeleton」を見つけてC++をコンパイルする！
+    - name: Build Skeleton Project
+      run: |
+        $projectFile = Get-ChildItem -Path AESDK -Filter Skeleton.vcxproj -Recurse | Select-Object -First 1
+        if ($projectFile) {
+            Write-Host "Building $($projectFile.FullName)..."
+            msbuild $projectFile.FullName /p:Configuration=Release /p:Platform=x64
+        } else {
+            Write-Error "Skeleton.vcxproj not found."
+            exit 1
+        }
+
+    # 完成した本物の .aex ファイルをダウンロードできるようにする
+    - name: Upload Real AEX
       uses: actions/upload-artifact@v4
       with:
-        name: NextGenTwitch_Plugin
-        path: build/NextGenTwitch.aex
+        name: Real_Plugin_Test
+        path: AESDK/**/*.aex
