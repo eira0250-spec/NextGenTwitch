@@ -33,18 +33,25 @@ jobs:
             exit 1
         }
 
-    # 【新規追加】ここでTwitchのコードをSkeletonに上書きハッキングする！
-    - name: Hack the Skeleton! (Replace source code)
+    # 【進化版ハッキング】メイン脳みそだけでなく、エラーの原因になる周辺部品も制圧する！
+    - name: Hack the Skeleton! (Total Override)
       run: |
         Set-Location -Path $env:GITHUB_WORKSPACE
         $targetCpp = Get-ChildItem -Path AESDK -Filter Skeleton.cpp -Recurse | Select-Object -First 1
         $targetH = Get-ChildItem -Path AESDK -Filter Skeleton.h -Recurse | Select-Object -First 1
+        $targetStringsCpp = Get-ChildItem -Path AESDK -Filter Skeleton_Strings.cpp -Recurse | Select-Object -First 1
+        $targetStringsH = Get-ChildItem -Path AESDK -Filter Skeleton_Strings.h -Recurse | Select-Object -First 1
         
         if ($targetCpp -and $targetH) {
             Write-Host "Skeletonのソースコードを発見！Twitchの脳みそを上書きします..."
             Copy-Item -Path "Twitch.cpp" -Destination $targetCpp.FullName -Force
             Copy-Item -Path "Twitch.h" -Destination $targetH.FullName -Force
-            Write-Host "ハッキング完了！"
+            
+            # エラーの原因だった「Skeleton_Strings」の中身を空っぽにして黙らせる
+            if ($targetStringsCpp) { Set-Content -Path $targetStringsCpp.FullName -Value "" }
+            if ($targetStringsH) { Set-Content -Path $targetStringsH.FullName -Value "" }
+            
+            Write-Host "完全ハッキング完了！"
         } else {
             Write-Error "上書き先のSkeletonソースが見つかりません！"
             exit 1
