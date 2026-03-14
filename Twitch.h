@@ -10,24 +10,34 @@
 #include "Param_Utils.h"
 #include <stdint.h>
 
-// プラグインのバージョン情報
 #define MAJOR_VERSION	1
-#define MINOR_VERSION	0
+#define MINOR_VERSION	1
 #define BUG_VERSION		0
 #define STAGE_VERSION	PF_Stage_DEVELOP
 #define BUILD_VERSION	1
 
-// UIスライダーの定義（Twitchの根幹）
 enum {
 	TWITCH_INPUT = 0,
-	TWITCH_AMOUNT, // カオスの強さ
-	TWITCH_SPEED,  // カオスの頻度
+	TWITCH_AMOUNT,
+	TWITCH_SPEED,
+	TWITCH_EN_BLUR,
+	TWITCH_EN_COLOR,
+	TWITCH_EN_LIGHT,
+	TWITCH_EN_SCALE,
+	TWITCH_EN_SLIDE,
+	TWITCH_EN_TIME,
 	TWITCH_NUM_PARAMS
 };
 
 enum {
 	AMOUNT_DISK_ID = 1,
-	SPEED_DISK_ID
+	SPEED_DISK_ID,
+	EN_BLUR_DISK_ID,
+	EN_COLOR_DISK_ID,
+	EN_LIGHT_DISK_ID,
+	EN_SCALE_DISK_ID,
+	EN_SLIDE_DISK_ID,
+	EN_TIME_DISK_ID
 };
 
 extern "C" {
