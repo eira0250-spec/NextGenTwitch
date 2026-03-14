@@ -9,31 +9,29 @@ inline uint32_t FastHash(uint32_t seed) {
 }
 
 static PF_Err About(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output) {
-    PF_SPRINTF(out_data->return_msg, "Next-Gen Twitch v1.1\nFull 6-Operator Edition");
+    PF_SPRINTF(out_data->return_msg, "Next-Gen Twitch v1.1\nUltimate Glitch Edition");
     return PF_Err_NONE;
 }
 
 static PF_Err GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output) {
     out_data->my_version = PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION);
-    out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE | PF_OutFlag_WIDE_TIME_INPUT;
+    // エラーの原因だった「WIDE_TIME_INPUT」を削除し、IDカード（2000000）に完全に一致させました！
+    out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE;
     return PF_Err_NONE;
 }
 
 static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output) {
     PF_Err err = PF_Err_NONE;
     PF_ParamDef def;
-    AEFX_CLR_STRUCT(def);
-    PF_ADD_FLOAT_SLIDERX("Amount", 0, 100, 0, 100, 50, PF_Precision_INTEGER, 0, 0, AMOUNT_DISK_ID);
-    AEFX_CLR_STRUCT(def);
-    PF_ADD_FLOAT_SLIDERX("Speed", 0, 100, 0, 100, 20, PF_Precision_INTEGER, 0, 0, SPEED_DISK_ID);
+    AEFX_CLR_STRUCT(def); PF_ADD_FLOAT_SLIDERX("Amount", 0, 100, 0, 100, 80, PF_Precision_INTEGER, 0, 0, AMOUNT_DISK_ID);
+    AEFX_CLR_STRUCT(def); PF_ADD_FLOAT_SLIDERX("Speed", 0, 100, 0, 100, 50, PF_Precision_INTEGER, 0, 0, SPEED_DISK_ID);
 
-    // ★エラーの原因だった大文字の「TRUE」を、確実な数字の「1（ON）」に変更！
     AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Enable Blur", "On", 1, 0, EN_BLUR_DISK_ID);
     AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Enable Color", "On", 1, 0, EN_COLOR_DISK_ID);
     AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Enable Light", "On", 1, 0, EN_LIGHT_DISK_ID);
     AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Enable Scale", "On", 1, 0, EN_SCALE_DISK_ID);
     AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Enable Slide", "On", 1, 0, EN_SLIDE_DISK_ID);
-    AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Enable Time", "On", 1, 0, EN_TIME_DISK_ID);
+    AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Enable Glitch (Blocks)", "On", 1, 0, EN_GLITCH_DISK_ID);
 
     out_data->num_params = TWITCH_NUM_PARAMS;
     return err;
@@ -41,112 +39,126 @@ static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef 
 
 static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output) {
     PF_Err err = PF_Err_NONE;
+    PF_EffectWorld *input = &params[TWITCH_INPUT]->u.ld;
     
-    // ★Warning（忠告）が出ないように、float（軽量な小数）に変換
     float amount = (float)(params[TWITCH_AMOUNT]->u.fs_d.value / 100.0);
     float speed  = (float)(params[TWITCH_SPEED]->u.fs_d.value / 100.0);
     
-    bool en_blur  = params[TWITCH_EN_BLUR]->u.bd.value != 0;
-    bool en_color = params[TWITCH_EN_COLOR]->u.bd.value != 0;
-    bool en_light = params[TWITCH_EN_LIGHT]->u.bd.value != 0;
-    bool en_scale = params[TWITCH_EN_SCALE]->u.bd.value != 0;
-    bool en_slide = params[TWITCH_EN_SLIDE]->u.bd.value != 0;
-    bool en_time  = params[TWITCH_EN_TIME]->u.bd.value != 0;
+    bool en_blur   = params[TWITCH_EN_BLUR]->u.bd.value != 0;
+    bool en_color  = params[TWITCH_EN_COLOR]->u.bd.value != 0;
+    bool en_light  = params[TWITCH_EN_LIGHT]->u.bd.value != 0;
+    bool en_scale  = params[TWITCH_EN_SCALE]->u.bd.value != 0;
+    bool en_slide  = params[TWITCH_EN_SLIDE]->u.bd.value != 0;
+    bool en_glitch = params[TWITCH_EN_GLITCH]->u.bd.value != 0;
 
-    float time = (float)in_data->current_time / (float)in_data->time_step;
-    uint32_t iTime = (uint32_t)(time * speed * 10.0f);
-    float noise = (FastHash(iTime) % 1000) / 1000.0f;
-    float noise2 = (FastHash(iTime + 123) % 1000) / 1000.0f;
+    // フレーム単位で確実に切り替わるようにシードを修正！
+    int frame = in_data->current_time / in_data->time_step;
+    float trig = (FastHash(frame * 13) % 1000) / 1000.0f;
 
-    bool is_twitching = (noise > (1.0f - amount) && amount > 0.0f);
-    
-    // 1. TIME (時間軸ジャンプ処理)
-    PF_EffectWorld *current_input = &params[TWITCH_INPUT]->u.ld;
-    PF_ParamDef checkout_input;
-    bool checked_out = false;
-    
-    if (is_twitching && en_time) {
-        int time_offset = (int)((noise2 - 0.5f) * 20.0f * amount * in_data->time_step);
-        int target_time = in_data->current_time + time_offset;
-        if (target_time < 0) target_time = 0;
-        
-        if (PF_CHECKOUT_PARAM(in_data, TWITCH_INPUT, target_time, in_data->time_step, in_data->time_scale, &checkout_input) == PF_Err_NONE) {
-            current_input = &checkout_input.u.ld;
-            checked_out = true;
-        }
-    }
+    // Speedの値（確率）に応じて痙攣をトリガー
+    bool is_twitching = (trig < speed) && (amount > 0.0f);
 
-    int x_shift = 0, y_shift = 0, blur_radius = 0;
-    float flash = 0.0f, scale = 1.0f;
+    float n1 = (FastHash(frame * 27) % 1000) / 1000.0f;
+    float n2 = (FastHash(frame * 31) % 1000) / 1000.0f;
+    float n3 = (FastHash(frame * 47) % 1000) / 1000.0f;
+
+    int x_shift = 0, y_shift = 0;
+    float scale_x = 1.0f, scale_y = 1.0f;
+    int flash_r = 0, flash_g = 0, flash_b = 0;
+    int glitch_blocks = 0;
+    int b_rad = 0;
 
     if (is_twitching) {
         if (en_slide) {
-            x_shift = (int)((noise - 0.5f) * 200.0f * amount);
-            y_shift = (int)((noise2 - 0.5f) * 200.0f * amount);
+            x_shift = (int)((n1 - 0.5f) * 600.0f * amount);
+            y_shift = (int)((n2 - 0.5f) * 100.0f * amount);
         }
-        if (en_light) flash = (noise - 0.5f) * 300.0f * amount;
-        if (en_scale) scale = 1.0f + (noise * 1.5f * amount);
-        if (en_blur)  blur_radius = (int)(noise * 30.0f * amount);
+        if (en_scale) {
+            scale_x = 1.0f + (n1 * 1.5f * amount);
+            scale_y = 1.0f + (n2 * 0.5f * amount);
+        }
+        if (en_light) {
+            flash_r = (int)(n1 * 255.0f * amount);
+            flash_g = (int)(n2 * 255.0f * amount);
+            flash_b = (int)(n3 * 255.0f * amount);
+        }
+        if (en_glitch) {
+            glitch_blocks = (int)(1.0f + n1 * 30.0f * amount);
+        }
+        if (en_blur) {
+            b_rad = (int)(n2 * 60.0f * amount);
+        }
     }
 
     int cx = output->width / 2;
     int cy = output->height / 2;
-    int in_w = current_input->width;
-    int in_h = current_input->height;
+    int in_w = input->width;
+    int in_h = input->height;
 
-    PF_Pixel *dstP;
     for (int y = 0; y < output->height; ++y) {
-        dstP = (PF_Pixel*)((char*)output->data + y * output->rowbytes);
-        
+        PF_Pixel *dstP = (PF_Pixel*)((char*)output->data + y * output->rowbytes);
+
+        // Glitch: 行ごとにランダムな横ズレを発生させる
+        int row_shift = 0;
+        if (is_twitching && en_glitch && glitch_blocks > 0) {
+            int block_h = in_h / glitch_blocks;
+            if (block_h < 1) block_h = 1;
+            int block_id = y / block_h;
+            float block_n = (FastHash(frame + block_id * 99) % 1000) / 1000.0f;
+            if (block_n > 0.6f) { // ブロックがズレる確率
+                row_shift = (int)((block_n - 0.8f) * 500.0f * amount);
+            }
+        }
+
         for (int x = 0; x < output->width; ++x) {
-            int s_x = cx + (int)((x - cx) / scale) + x_shift;
-            int s_y = cy + (int)((y - cy) / scale) + y_shift;
-            
-            PF_Pixel c = {0, 0, 0, 0};
-            
-            if (s_x >= 0 && s_x < in_w && s_y >= 0 && s_y < in_h) {
-                // 3. BLUR
-                if (blur_radius > 0) {
-                    int r_sum = 0, g_sum = 0, b_sum = 0, a_sum = 0, count = 0;
-                    int step = blur_radius / 3 + 1;
-                    for (int by = -blur_radius; by <= blur_radius; by += step) {
-                        for (int bx = -blur_radius; bx <= blur_radius; bx += step) {
-                            int bs_x = s_x + bx, bs_y = s_y + by;
-                            if (bs_x >= 0 && bs_x < in_w && bs_y >= 0 && bs_y < in_h) {
-                                PF_Pixel *p = (PF_Pixel*)((char*)current_input->data + bs_y * current_input->rowbytes) + bs_x;
-                                r_sum += p->red; g_sum += p->green; b_sum += p->blue; a_sum += p->alpha;
-                                count++;
-                            }
-                        }
-                    }
-                    if (count > 0) { c.red = r_sum / count; c.green = g_sum / count; c.blue = b_sum / count; c.alpha = a_sum / count; }
-                } else {
-                    c = *((PF_Pixel*)((char*)current_input->data + s_y * current_input->rowbytes) + s_x);
-                }
-            }
-            
-            // 4. COLOR
+            int s_x = cx + (int)((x - cx) / scale_x) + x_shift + row_shift;
+            int s_y = cy + (int)((y - cy) / scale_y) + y_shift;
+
+            // 画面外は端のピクセルを延長して埋める（黒帯が出ないようにする処理）
+            int clamp_x = s_x < 0 ? 0 : (s_x >= in_w ? in_w - 1 : s_x);
+            int clamp_y = s_y < 0 ? 0 : (s_y >= in_h ? in_h - 1 : s_y);
+
+            PF_Pixel *srcP = (PF_Pixel*)((char*)input->data + clamp_y * input->rowbytes) + clamp_x;
+            PF_Pixel c = *srcP;
+
+            // Color (RGBハイパースプリット)
             if (is_twitching && en_color) {
-                int g_x = s_x + (int)(x_shift * 0.4f) + 5, g_y = s_y + (int)(y_shift * 0.4f) + 5;
-                int b_x = s_x - (int)(x_shift * 0.4f) - 5, b_y = s_y - (int)(y_shift * 0.4f) - 5;
-                if (g_x >= 0 && g_x < in_w && g_y >= 0 && g_y < in_h) c.green = ((PF_Pixel*)((char*)current_input->data + g_y * current_input->rowbytes) + g_x)->green;
-                if (b_x >= 0 && b_x < in_w && b_y >= 0 && b_y < in_h) c.blue = ((PF_Pixel*)((char*)current_input->data + b_y * current_input->rowbytes) + b_x)->blue;
+                int r_x = clamp_x + (int)(x_shift * 0.8f) + row_shift + 15;
+                int b_x = clamp_x - (int)(x_shift * 0.8f) - row_shift - 15;
+                r_x = r_x < 0 ? 0 : (r_x >= in_w ? in_w - 1 : r_x);
+                b_x = b_x < 0 ? 0 : (b_x >= in_w ? in_w - 1 : b_x);
+
+                c.red = ((PF_Pixel*)((char*)input->data + clamp_y * input->rowbytes) + r_x)->red;
+                c.blue = ((PF_Pixel*)((char*)input->data + clamp_y * input->rowbytes) + b_x)->blue;
             }
-            
-            // 5. LIGHT
+
+            // Blur (超高速な横方向モーションブラー)
+            if (is_twitching && en_blur && b_rad > 0) {
+                int sum_r = c.red, sum_g = c.green, sum_b = c.blue;
+                int taps = 1;
+                for(int tap = 1; tap <= 4; ++tap) {
+                    int bx1 = clamp_x + tap * b_rad / 4;
+                    bx1 = bx1 >= in_w ? in_w - 1 : bx1;
+                    PF_Pixel *bp1 = (PF_Pixel*)((char*)input->data + clamp_y * input->rowbytes) + bx1;
+                    sum_r += bp1->red; sum_g += bp1->green; sum_b += bp1->blue; taps++;
+
+                    int bx2 = clamp_x - tap * b_rad / 4;
+                    bx2 = bx2 < 0 ? 0 : bx2;
+                    PF_Pixel *bp2 = (PF_Pixel*)((char*)input->data + clamp_y * input->rowbytes) + bx2;
+                    sum_r += bp2->red; sum_g += bp2->green; sum_b += bp2->blue; taps++;
+                }
+                c.red = sum_r / taps; c.green = sum_g / taps; c.blue = sum_b / taps;
+            }
+
+            // Light (ネオンフラッシュ)
             if (is_twitching && en_light) {
-                int r = c.red + (int)flash, g = c.green + (int)flash, b = c.blue + (int)flash;
-                c.red   = (r > 255) ? 255 : (r < 0 ? 0 : r);
-                c.green = (g > 255) ? 255 : (g < 0 ? 0 : g);
-                c.blue  = (b > 255) ? 255 : (b < 0 ? 0 : b);
+                int r = c.red + flash_r; int g = c.green + flash_g; int b = c.blue + flash_b;
+                c.red = r > 255 ? 255 : r; c.green = g > 255 ? 255 : g; c.blue = b > 255 ? 255 : b;
             }
-            
-            dstP->red = c.red; dstP->green = c.green; dstP->blue = c.blue; dstP->alpha = c.alpha;
-            dstP++;
+
+            *dstP++ = c;
         }
     }
-    
-    if (checked_out) PF_CHECKIN_PARAM(in_data, &checkout_input);
     return err;
 }
 
