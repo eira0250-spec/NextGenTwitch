@@ -1,4 +1,4 @@
-name: Build Real AE Plugin
+name: Build Next-Gen Twitch
 
 on:
   workflow_dispatch:
@@ -33,9 +33,25 @@ jobs:
             exit 1
         }
 
-    - name: Find and Build Skeleton
+    # 【新規追加】ここでTwitchのコードをSkeletonに上書きハッキングする！
+    - name: Hack the Skeleton! (Replace source code)
       run: |
-        # 【追加】完成品を入れるための専用フォルダをCドライブに作る
+        Set-Location -Path $env:GITHUB_WORKSPACE
+        $targetCpp = Get-ChildItem -Path AESDK -Filter Skeleton.cpp -Recurse | Select-Object -First 1
+        $targetH = Get-ChildItem -Path AESDK -Filter Skeleton.h -Recurse | Select-Object -First 1
+        
+        if ($targetCpp -and $targetH) {
+            Write-Host "Skeletonのソースコードを発見！Twitchの脳みそを上書きします..."
+            Copy-Item -Path "Twitch.cpp" -Destination $targetCpp.FullName -Force
+            Copy-Item -Path "Twitch.h" -Destination $targetH.FullName -Force
+            Write-Host "ハッキング完了！"
+        } else {
+            Write-Error "上書き先のSkeletonソースが見つかりません！"
+            exit 1
+        }
+
+    - name: Build Hacked Plugin
+      run: |
         New-Item -ItemType Directory -Force -Path "C:\aex_output"
         $env:AE_PLUGIN_BUILD_DIR = "C:\aex_output"
         
@@ -43,16 +59,15 @@ jobs:
         $projectFile = Get-ChildItem -Path AESDK -Filter *keleton*.vcxproj -Recurse | Select-Object -First 1
         
         if ($projectFile) {
-            Write-Host "設計図（Skeleton）をついに発見！コンパイルを開始します: $($projectFile.FullName)"
+            Write-Host "改造された設計図でコンパイルを開始します: $($projectFile.FullName)"
             msbuild $projectFile.FullName /p:Configuration=Release /p:Platform=x64
         } else {
-            Write-Error "解凍後もSkeletonが見つかりません。何かおかしいです。"
+            Write-Error "Skeleton.vcxproj が見つかりません。"
             exit 1
         }
 
-    - name: Upload Real AEX
+    - name: Upload Next-Gen Twitch AEX
       uses: actions/upload-artifact@v4
       with:
-        name: Real_Plugin_Test
-        # 【変更】受け皿フォルダ（C:\aex_output）の中にある .aex を回収する
+        name: NextGenTwitch_Plugin
         path: "C:/aex_output/**/*.aex"
