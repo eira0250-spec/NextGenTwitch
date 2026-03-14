@@ -1,29 +1,53 @@
-name: Debug SDK Content
+name: Build Real AE Plugin
 
 on:
   workflow_dispatch:
 
 jobs:
-  debug:
+  build:
     runs-on: windows-latest
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Inspect ZIP and Extract
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Extract Outer ZIP
       run: |
         $zipFile = Get-ChildItem -Filter *.zip | Select-Object -First 1
-        if ($zipFile) {
-            Write-Host "【発見！】アップロードされたZIP: $($zipFile.Name)"
-            Write-Host "【サイズ】: $($zipFile.Length) バイト"
-            
-            Write-Host "解凍して中身を調べます..."
-            7z x $zipFile.FullName -oAESDK -y > $null
-            
-            Write-Host "================ ZIPの中身（最初の30個） ================"
-            Get-ChildItem -Path AESDK -Recurse | Select-Object FullName | Select-Object -First 30
+        Write-Host "一番外側のZIPを解凍します..."
+        7z x $zipFile.FullName -oAESDK -y > $null
+
+    - name: Extract Inner Adobe Archive (ZSTD)
+      run: |
+        $batFile = Get-ChildItem -Path AESDK -Filter extractzstd.bat -Recurse | Select-Object -First 1
+        if ($batFile) {
+            Write-Host "Adobeの特殊な内箱を発見！専用スクリプトで解凍します..."
+            $batDir = Split-Path -Parent $batFile.FullName
+            Set-Location -Path $batDir
+            cmd.exe /c extractzstd.bat
         } else {
-            Write-Error "ZIPファイル自体が見つかりません！アップロードできていないかも？"
+            Write-Error "extractzstd.bat が見つかりません！"
             exit 1
         }
+
+    - name: Find and Build Skeleton
+      run: |
+        Set-Location -Path $env:GITHUB_WORKSPACE
+        $projectFile = Get-ChildItem -Path AESDK -Filter *keleton*.vcxproj -Recurse | Select-Object -First 1
+        
+        if ($projectFile) {
+            Write-Host "設計図（Skeleton）をついに発見！コンパイルを開始します: $($projectFile.FullName)"
+            msbuild $projectFile.FullName /p:Configuration=Release /p:Platform=x64
+        } else {
+            Write-Error "解凍後もSkeletonが見つかりません。何かおかしいです。"
+            exit 1
+        }
+
+    - name: Upload Real AEX
+      uses: actions/upload-artifact@v4
+      with:
+        name: Real_Plugin_Test
+        path: "**/*.aex"
