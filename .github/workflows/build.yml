@@ -24,7 +24,6 @@ jobs:
       run: |
         $batFile = Get-ChildItem -Path AESDK -Filter extractzstd.bat -Recurse | Select-Object -First 1
         if ($batFile) {
-            Write-Host "Adobeの特殊な内箱を発見！専用スクリプトで解凍します..."
             $batDir = Split-Path -Parent $batFile.FullName
             Set-Location -Path $batDir
             cmd.exe /c extractzstd.bat
@@ -33,25 +32,28 @@ jobs:
             exit 1
         }
 
-    # 【進化版ハッキング】メイン脳みそだけでなく、エラーの原因になる周辺部品も制圧する！
-    - name: Hack the Skeleton! (Total Override)
+    - name: Hack the Skeleton! (Total Override & PiPL Hack)
       run: |
         Set-Location -Path $env:GITHUB_WORKSPACE
         $targetCpp = Get-ChildItem -Path AESDK -Filter Skeleton.cpp -Recurse | Select-Object -First 1
         $targetH = Get-ChildItem -Path AESDK -Filter Skeleton.h -Recurse | Select-Object -First 1
         $targetStringsCpp = Get-ChildItem -Path AESDK -Filter Skeleton_Strings.cpp -Recurse | Select-Object -First 1
         $targetStringsH = Get-ChildItem -Path AESDK -Filter Skeleton_Strings.h -Recurse | Select-Object -First 1
+        $pipl = Get-ChildItem -Path AESDK -Filter SkeletonPiPL.r -Recurse | Select-Object -First 1
         
         if ($targetCpp -and $targetH) {
-            Write-Host "Skeletonのソースコードを発見！Twitchの脳みそを上書きします..."
             Copy-Item -Path "Twitch.cpp" -Destination $targetCpp.FullName -Force
             Copy-Item -Path "Twitch.h" -Destination $targetH.FullName -Force
             
-            # エラーの原因だった「Skeleton_Strings」の中身を空っぽにして黙らせる
             if ($targetStringsCpp) { Set-Content -Path $targetStringsCpp.FullName -Value "" }
             if ($targetStringsH) { Set-Content -Path $targetStringsH.FullName -Value "" }
             
-            Write-Host "完全ハッキング完了！"
+            # 【究極のハッキング】AEの安全装置(IDカード)を書き換え、自動アニメーションを強制許可する！
+            # 33554432 (DEEP_COLOR_AWARE) を 33554440 (DEEP_COLOR_AWARE + NON_PARAM_VARY) に置換
+            if ($pipl) {
+                (Get-Content -Path $pipl.FullName) -replace '33554432', '33554440' | Set-Content -Path $pipl.FullName
+                Write-Host "IDカードのハッキング完了！"
+            }
         } else {
             Write-Error "上書き先のSkeletonソースが見つかりません！"
             exit 1
@@ -66,7 +68,6 @@ jobs:
         $projectFile = Get-ChildItem -Path AESDK -Filter *keleton*.vcxproj -Recurse | Select-Object -First 1
         
         if ($projectFile) {
-            Write-Host "改造された設計図でコンパイルを開始します: $($projectFile.FullName)"
             msbuild $projectFile.FullName /p:Configuration=Release /p:Platform=x64
         } else {
             Write-Error "Skeleton.vcxproj が見つかりません。"
