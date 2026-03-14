@@ -35,6 +35,10 @@ jobs:
 
     - name: Find and Build Skeleton
       run: |
+        # 【追加】完成品を入れるための専用フォルダをCドライブに作る
+        New-Item -ItemType Directory -Force -Path "C:\aex_output"
+        $env:AE_PLUGIN_BUILD_DIR = "C:\aex_output"
+        
         Set-Location -Path $env:GITHUB_WORKSPACE
         $projectFile = Get-ChildItem -Path AESDK -Filter *keleton*.vcxproj -Recurse | Select-Object -First 1
         
@@ -50,4 +54,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: Real_Plugin_Test
-        path: "**/*.aex"
+        # 【変更】受け皿フォルダ（C:\aex_output）の中にある .aex を回収する
+        path: "C:/aex_output/**/*.aex"
